@@ -72,11 +72,13 @@ function computeHeatIndex(tempC: number, humidity: number): number {
   return fToC(hiF);
 }
 
-function getComfortStatus(heatIndexC: number, airQuality: number): string {
-  // airQuality is CO2 ppm (400-50000). ASHRAE: >2000 = poor ventilation.
-  if (heatIndexC > 29 || heatIndexC < 18 || airQuality > 2000) return "POOR";
-  if (heatIndexC >= 20 && heatIndexC <= 26 && airQuality < 1000) return "OPTIMAL";
-  return "FAIR";
+function getComfortStatus(airQuality: number): string {
+  // Match the firmware's airStatusFor() exactly — CO2 ppm only, no heat index.
+  // The firmware uses: >5000=HAZARD, >2000=POOR, >1000=FAIR, <=1000=GOOD.
+  if (airQuality > 5000) return "HAZARD";
+  if (airQuality > 2000) return "POOR";
+  if (airQuality > 1000) return "FAIR";
+  return "GOOD";
 }
 
 // ---------------------------------------------------------------------------
@@ -126,15 +128,17 @@ function normalizePayload(payload: SensorPayload, topic: string) {
   const segments = topic.split("/");
   const nodeId = segments.length >= 3 ? segments[1] : segments[segments.length - 1] ?? "node-01";
 
-  // Compute heat index and comfort status server-side (closes G11)
+  // Compute heat index (stored for analytics) and comfort status
+  // (matches firmware's airStatusFor — CO2 ppm only, no heat index).
   let heatIndex: number | undefined;
   let comfortStatus: string | undefined;
 
   if (validTemp !== undefined && validHumidity !== undefined) {
     heatIndex = Math.round(computeHeatIndex(validTemp, validHumidity) * 10) / 10;
-    if (validAirQuality !== undefined) {
-      comfortStatus = getComfortStatus(heatIndex, validAirQuality);
-    }
+  }
+  if (validAirQuality !== undefined) {
+    comfortStatus = getComfortStatus(validAirQuality);
+  }
   }
 
   return {

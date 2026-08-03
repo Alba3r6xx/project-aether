@@ -9,11 +9,16 @@
  */
 
 // Comfort status thresholds, shared by gauges, cards and the comfort banner.
+// Matches the firmware's airStatusFor() exactly: CO2 ppm only.
+//   GOOD     <= 1000 ppm       Air is fresh
+//   FAIR     1001-2000 ppm     Acceptable, monitor
+//   POOR     2001-5000 ppm     Poor ventilation, drowsiness
+//   HAZARD   > 5000 ppm        OSHA exposure limit exceeded
 export const COMFORT_LEVELS = {
-  OPTIMAL: {
-    key: 'OPTIMAL',
-    label: 'Optimal',
-    message: 'All parameters within ideal range, environment is comfortable.',
+  GOOD: {
+    key: 'GOOD',
+    label: 'Good',
+    message: 'Air quality is fresh, CO2 levels are within a healthy range.',
     color: 'var(--color-accent-green)',
     bg: 'from-emerald-900/60 to-emerald-800/40',
     ring: 'ring-emerald-400/30',
@@ -21,7 +26,7 @@ export const COMFORT_LEVELS = {
   FAIR: {
     key: 'FAIR',
     label: 'Fair',
-    message: 'All parameters within an okay range, environment is fairly comfortable.',
+    message: 'CO2 levels are acceptable but rising, consider ventilating.',
     color: 'var(--color-accent-yellow)',
     bg: 'from-amber-900/60 to-amber-800/40',
     ring: 'ring-amber-400/30',
@@ -29,10 +34,18 @@ export const COMFORT_LEVELS = {
   POOR: {
     key: 'POOR',
     label: 'Poor',
-    message: 'Some parameters are outside the ideal range, improvements need to be made.',
+    message: 'CO2 levels indicate poor ventilation, open a window or ventilate.',
     color: 'var(--color-accent-red)',
     bg: 'from-rose-900/60 to-rose-800/40',
     ring: 'ring-rose-400/30',
+  },
+  HAZARD: {
+    key: 'HAZARD',
+    label: 'Hazard',
+    message: 'CO2 levels exceed safe exposure limits, ventilate immediately.',
+    color: 'var(--color-accent-red)',
+    bg: 'from-red-900/70 to-red-800/50',
+    ring: 'ring-red-500/40',
   },
 };
 
@@ -134,32 +147,23 @@ export function computeHeatIndex(tempC, humidity) {
 }
 
 /**
- * Classifies comfort status using the §5.0 thresholds:
+ * Classifies comfort status from CO2 ppm, matching the firmware's
+ * airStatusFor() exactly:
  *
- *   Status   Heat Index (°C)   Air Quality (%)   Meaning
- *   OPTIMAL  20 – 26           < 30              Ideal conditions
- *   FAIR     26 – 29           30 – 60           Acceptable — monitor
- *   POOR     > 29 or < 18      > 60              Uncomfortable / unsafe
+ *   Status   CO2 ppm          Meaning
+ *   GOOD     <= 1000          Fresh air
+ *   FAIR     1001 – 2000      Acceptable, monitor
+ *   POOR     2001 – 5000      Poor ventilation, drowsiness
+ *   HAZARD   > 5000           OSHA exposure limit exceeded
  *
- * Classification is worst-case: if EITHER metric falls into POOR, the
- * status is POOR. If either falls into FAIR (but neither is POOR), it's
- * FAIR. Only when both are OPTIMAL is the status OPTIMAL.
- *
- * @param {number} heatIndexC   - Steadman heat index in Celsius
- * @param {number} airQuality   - air quality percentage (0-100)
+ * @param {number} airQuality  - CO2 ppm (400-50000)
  * @returns {{key,label,message,color,bg,ring}}  - a COMFORT_LEVELS entry
  */
-export function getComfortLevel(heatIndexC, airQuality) {
-  // Stage 3: POOR if either metric is in the POOR band
-  if (heatIndexC > 29 || heatIndexC < 18 || airQuality > 60) {
-    return COMFORT_LEVELS.POOR;
-  }
-  // OPTIMAL only if both metrics are in the OPTIMAL band
-  if (heatIndexC >= 20 && heatIndexC <= 26 && airQuality < 30) {
-    return COMFORT_LEVELS.OPTIMAL;
-  }
-  // Everything else is FAIR (18-20, 26-29, or AQ 30-60)
-  return COMFORT_LEVELS.FAIR;
+export function getComfortLevel(airQuality) {
+  if (airQuality > 5000) return COMFORT_LEVELS.HAZARD;
+  if (airQuality > 2000) return COMFORT_LEVELS.POOR;
+  if (airQuality > 1000) return COMFORT_LEVELS.FAIR;
+  return COMFORT_LEVELS.GOOD;
 }
 
 /**
@@ -172,7 +176,7 @@ export function getComfortLevel(heatIndexC, airQuality) {
  */
 export function evaluateComfort({ temperature, humidity, airQuality }) {
   const heatIndex = computeHeatIndex(temperature, humidity);
-  const level = getComfortLevel(heatIndex, airQuality);
+  const level = getComfortLevel(airQuality);
   return {
     heatIndex: Math.round(heatIndex * 10) / 10,
     comfortStatus: level.key,

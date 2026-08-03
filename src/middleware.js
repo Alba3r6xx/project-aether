@@ -61,9 +61,17 @@ export async function middleware(request) {
     },
   });
 
+  // Use getSession() instead of getUser() — getSession reads the JWT from
+  // the cookie and validates it locally without a network round-trip to
+  // Supabase's auth API. getUser() makes a network call on every request
+  // (2-6s on Vercel serverless). The session JWT is signed by Supabase and
+  // can be trusted locally for route guarding. The actual data queries
+  // still go through RLS which validates the user server-side.
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  const user = session?.user ?? null;
 
   if (isProtected && !user) {
     const redirectUrl = request.nextUrl.clone();

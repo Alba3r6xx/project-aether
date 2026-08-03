@@ -60,10 +60,13 @@ function computeHeatIndex(tempC, humidity) {
   return fToC(hiF);
 }
 
-function getComfortStatus(heatIndexC, airQuality) {
-  if (heatIndexC > 29 || heatIndexC < 18 || airQuality > 2000) return 'POOR';
-  if (heatIndexC >= 20 && heatIndexC <= 26 && airQuality < 1000) return 'OPTIMAL';
-  return 'FAIR';
+function getComfortStatus(airQuality) {
+  // Match the firmware's airStatusFor() exactly — CO2 ppm only, no heat index.
+  // The firmware uses: >5000=HAZARD, >2000=POOR, >1000=FAIR, <=1000=GOOD.
+  if (airQuality > 5000) return 'HAZARD';
+  if (airQuality > 2000) return 'POOR';
+  if (airQuality > 1000) return 'FAIR';
+  return 'GOOD';
 }
 
 // --- Node org_id cache ---
@@ -141,13 +144,14 @@ client.on('message', async (topic, payloadBuffer) => {
     const validAq = clamp(airQuality, 0, 50000);
     const validLum = clamp(luminosity, 0, 100000);
 
-    // Compute heat index and comfort
+    // Compute heat index (stored for analytics) and comfort status
+    // (matches firmware's airStatusFor — CO2 ppm only, no heat index).
     let heatIndex, comfortStatus;
     if (validTemp !== undefined && validHum !== undefined) {
       heatIndex = Math.round(computeHeatIndex(validTemp, validHum) * 10) / 10;
-      if (validAq !== undefined) {
-        comfortStatus = getComfortStatus(heatIndex, validAq);
-      }
+    }
+    if (validAq !== undefined) {
+      comfortStatus = getComfortStatus(validAq);
     }
 
     // Look up org_id
