@@ -18,6 +18,27 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, IS_SUPABASE_CONFIGURED } from './servi
 export async function middleware(request) {
   if (!IS_SUPABASE_CONFIGURED) return NextResponse.next();
 
+  const pathname = request.nextUrl.pathname;
+
+  // Only run the Supabase session check for routes that actually need it.
+  // Calling supabase.auth.getUser() on every request adds 2-6 seconds on
+  // Vercel serverless (network round-trip to Supabase auth API). By limiting
+  // it to protected + auth pages, the homepage and static assets load instantly.
+  const isProtected =
+    pathname === '/dashboard' ||
+    pathname === '/history' ||
+    pathname === '/analytics' ||
+    pathname === '/settings';
+
+  const isAuthPage =
+    pathname === '/login' ||
+    pathname === '/signup' ||
+    pathname === '/forgot-password';
+
+  if (!isProtected && !isAuthPage) {
+    return NextResponse.next();
+  }
+
   const response = NextResponse.next({ request });
 
   const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -44,12 +65,6 @@ export async function middleware(request) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isProtected =
-    request.nextUrl.pathname === '/dashboard' ||
-    request.nextUrl.pathname === '/history' ||
-    request.nextUrl.pathname === '/analytics' ||
-    request.nextUrl.pathname === '/settings';
-
   if (isProtected && !user) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = '/login';
@@ -58,10 +73,6 @@ export async function middleware(request) {
   }
 
   // Redirect already-signed-in users away from the auth pages.
-  const isAuthPage =
-    request.nextUrl.pathname === '/login' ||
-    request.nextUrl.pathname === '/signup' ||
-    request.nextUrl.pathname === '/forgot-password';
   if (isAuthPage && user) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = '/dashboard';

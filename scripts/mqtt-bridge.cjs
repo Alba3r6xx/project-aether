@@ -120,7 +120,10 @@ client.on('message', async (topic, payloadBuffer) => {
     const humidity = payload.humidity;
     // air_quality is CO2 ppm (400-50000), NOT a 0-100 percentage
     const airQuality = payload.airQuality;
-    const luminosity = payload.luminosity ?? (payload.light !== undefined ? Math.round((payload.light / 4095) * 3000) : undefined);
+    // The firmware sends "light" as a raw ADC value (0-4095). Store it
+    // directly as luminosity — the dashboard can interpret the raw value.
+    // The previous conversion (light/4095)*3000 was producing wrong values.
+    const luminosity = payload.luminosity ?? payload.light;
 
     // Parse node_id from topic: aether/<node_id>/telemetry
     const segments = topic.split('/');

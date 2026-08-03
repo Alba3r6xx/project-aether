@@ -98,7 +98,9 @@ function normalizePayload(payload: SensorPayload, topic: string) {
   const temperature = payload.temperature ?? payload.temp;
   const humidity = payload.humidity;
   const airQuality = payload.airQuality;
-  const luminosity = payload.luminosity ?? (payload.light !== undefined ? Math.round((payload.light / 4095) * 3000) : undefined);
+  // The firmware sends "light" as a raw ADC value (0-4095). Store it
+  // directly as luminosity — the dashboard can interpret the raw value.
+  const luminosity = payload.luminosity ?? payload.light;
 
   // AUDIT M12: validate that sensor values are within physically reasonable
   // ranges. Out-of-range values are set to undefined so they're stored as
