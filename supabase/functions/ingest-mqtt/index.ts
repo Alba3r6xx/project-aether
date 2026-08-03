@@ -139,7 +139,6 @@ function normalizePayload(payload: SensorPayload, topic: string) {
   if (validAirQuality !== undefined) {
     comfortStatus = getComfortStatus(validAirQuality);
   }
-  }
 
   return {
     node_id: nodeId,
