@@ -37,11 +37,15 @@ const nextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+              // Next.js requires unsafe-inline for hydration scripts;
+              // unsafe-eval removed (not needed in production with RSC).
+              "script-src 'self' 'unsafe-inline'",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com data:",
               "img-src 'self' data: https: blob:",
-              "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.hivemq.cloud",
+              // Browser only talks to Supabase (REST + Realtime WebSocket).
+              // MQTT is handled server-side by the bridge/Edge Function.
+              "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
               "frame-ancestors 'self'",
               "base-uri 'self'",
               "form-action 'self'",

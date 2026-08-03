@@ -31,6 +31,22 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import mqtt from "https://esm.sh/mqtt@5.10.1";
 
+// Rate limiter: 10 config publishes per user per 10 minutes.
+const MAX_PUBLISHES = 10;
+const WINDOW_MS = 10 * 60 * 1000;
+const publishMap = new Map<string, { count: number; firstAt: number }>();
+
+function checkRateLimit(userId: string): boolean {
+  const now = Date.now();
+  const entry = publishMap.get(userId);
+  if (!entry || now - entry.firstAt > WINDOW_MS) {
+    publishMap.set(userId, { count: 1, firstAt: now });
+    return true;
+  }
+  entry.count++;
+  return entry.count <= MAX_PUBLISHES;
+}
+
 // AUDIT H16/L10: structured logging helper.
 function log(level: string, msg: string, meta: Record<string, unknown> = {}) {
   console.log(JSON.stringify({ ts: new Date().toISOString(), service: "publish-config", level, msg, ...meta }));
@@ -157,6 +173,12 @@ Deno.serve(async (req: Request) => {
     return errorResponse(401, "Unauthorized", requestId);
   }
 
+  // Rate limit: prevent config publish spam.
+  if (!checkRateLimit(user.id)) {
+    log("warn", "Rate limit exceeded for config publish", { requestId, userId: user.id });
+    return errorResponse(429, "Too many config updates. Please wait a few minutes.", requestId);
+  }
+
   // Parse the request body.
   let body;
   try {
@@ -233,6 +255,11 @@ Deno.serve(async (req: Request) => {
   if (!membership) {
     log("warn", "Cross-org config publish attempt blocked", { requestId, nodeId, userId: user.id });
     return errorResponse(403, "You do not have access to this node.", requestId);
+  }
+  // Only owners and admins can push config to devices. Viewers cannot.
+  if (!["owner", "admin"].includes(membership.role)) {
+    log("warn", "Non-admin config publish attempt blocked", { requestId, nodeId, userId: user.id, role: membership.role });
+    return errorResponse(403, "Only owners and admins can publish device config.", requestId);
   }
 
   const { data: settings, error: settingsError } = await adminClient

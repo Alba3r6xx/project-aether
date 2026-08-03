@@ -18,10 +18,15 @@ const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config({ path: '.env.local' });
 require('dotenv').config({ path: '.env' });
 
-const MQTT_URL = process.env.MQTT_BROKER_URL || 'mqtts://9268686336de4c5a9a2008b31bea5823.s1.eu.hivemq.cloud:8883';
-const MQTT_USER = process.env.MQTT_USERNAME || 'AetherOS';
-const MQTT_PASS = process.env.MQTT_PASSWORD || 'AetherOS';
+const MQTT_URL = process.env.MQTT_BROKER_URL;
+const MQTT_USER = process.env.MQTT_USERNAME;
+const MQTT_PASS = process.env.MQTT_PASSWORD;
 const MQTT_TOPIC = process.env.MQTT_TOPIC || 'aether/+/telemetry';
+
+if (!MQTT_URL || !MQTT_USER || !MQTT_PASS) {
+  console.error('[bridge] Missing MQTT_BROKER_URL, MQTT_USERNAME, or MQTT_PASSWORD in env. Exiting.');
+  process.exit(1);
+}
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
