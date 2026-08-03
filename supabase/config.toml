@@ -1,0 +1,43 @@
+# Project Aether — Supabase CLI config (AUDIT C10)
+#
+# Used by `supabase` CLI for local development, migrations, and Edge Function
+# deployment. Install the CLI: https://supabase.com/docs/guides/cli
+#
+# Deploy Edge Functions:
+#   supabase functions deploy ingest-mqtt --no-verify-jwt
+#   supabase functions deploy evaluate-alerts --no-verify-jwt
+#   supabase functions deploy claim-node
+#   supabase functions deploy weekly-summary --no-verify-jwt
+#   supabase functions deploy latest-readings
+#
+# Push migrations:
+#   supabase db push
+
+project_id = "project-aether"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+
+[db]
+port = 54322
+
+[studio]
+enabled = true
+port = 54323
+
+[functions.ingest-mqtt]
+verify_jwt = false
+
+[functions.evaluate-alerts]
+verify_jwt = false
+
+[functions.weekly-summary]
+verify_jwt = false
+
+[functions.claim-node]
+verify_jwt = true
+
+[functions.latest-readings]
+verify_jwt = true
