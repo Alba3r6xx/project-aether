@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+# Auth-protected routes shouldn't be indexed
+Disallow: /dashboard
+Disallow: /settings
+Disallow: /history
+Disallow: /analytics

@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+@theme {
+  /* Enterprise dark palette — deep navy with refined contrast layers */
+  --color-navy-950: #070d1a;
+  --color-navy-925: #0a1224;
+  --color-navy-900: #0d1729;
+  --color-navy-850: #111e36;
+  --color-navy-800: #16233d;
+  --color-navy-750: #1b2a47;
+  --color-navy-700: #213254;
+  --color-navy-600: #2d4068;
+
+  /* Accent colors — semantic, not decorative */
+  --color-accent-green: #22c55e;
+  --color-accent-green-dark: #16a34a;
+  --color-accent-blue: #3b82f6;
+  --color-accent-cyan: #06b6d4;
+  --color-accent-orange: #f97316;
+  --color-accent-yellow: #eab308;
+  --color-accent-red: #ef4444;
+  --color-accent-purple: #a855f7;
+
+  /* Typography */
+  --font-display: "Sora", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--color-navy-950);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Refined scrollbar — thinner, subtler */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Focus ring — consistent across all interactive elements */
+.focus-ring:focus-visible {
+  outline: 2px solid var(--color-accent-blue);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Pulse animation for live indicators */
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.animate-live-pulse {
+  animation: live-pulse 2s ease-in-out infinite;
+}
+
+/* Smooth value transitions */
+.value-transition {
+  transition: color 0.3s ease, transform 0.3s ease;
+}
+
+/* Card hover lift — subtle, enterprise-appropriate */
+.card-hover {
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+.card-hover:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+/* Grid pattern background for empty states */
+.grid-pattern {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Mobile bottom nav spacing — prevents content from being hidden
+   behind the fixed MobileNav bar on screens below lg breakpoint */
+@media (max-width: 1023px) {
+  body:has(.mobile-nav-spacer) {
+    padding-bottom: 64px;
+  }
+}
+
+/* AUDIT: Respect reduced-motion preference for accessibility.
+   Disables animations and transitions for motion-sensitive users. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Prevent text selection on interactive UI elements to avoid
+   accidental text selection during touch interaction on mobile */
+button,
+[role="button"],
+[role="switch"] {
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+/* Prevent iOS zoom on input focus by ensuring inputs use 16px+ font */
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
