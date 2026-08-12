@@ -6,13 +6,14 @@ import { COMFORT_LEVELS } from '../../data/constants';
 import { cn } from '../../utils/cn';
 
 const ICONS = {
-  OPTIMAL: CheckCircle2,
+  GOOD: CheckCircle2,
   FAIR: AlertTriangle,
   POOR: AlertOctagon,
+  HAZARD: AlertOctagon,
 };
 
 const STYLES = {
-  OPTIMAL: {
+  GOOD: {
     bar: 'bg-emerald-400',
     text: 'text-emerald-400',
     bg: 'bg-emerald-400/[0.07]',
@@ -30,6 +31,12 @@ const STYLES = {
     bg: 'bg-rose-400/[0.07]',
     border: 'border-rose-400/20',
   },
+  HAZARD: {
+    bar: 'bg-red-500',
+    text: 'text-red-500',
+    bg: 'bg-red-500/[0.09]',
+    border: 'border-red-500/30',
+  },
 };
 
 /**
@@ -38,7 +45,7 @@ const STYLES = {
  */
 export default function StatusCard({ level }) {
   const info = COMFORT_LEVELS[level];
-  const validLevel = ['OPTIMAL', 'FAIR', 'POOR'].includes(level);
+  const validLevel = ['GOOD', 'FAIR', 'POOR', 'HAZARD'].includes(level);
   const Icon = validLevel ? ICONS[level] : HelpCircle;
   const styles = validLevel ? STYLES[level] : STYLES.FAIR;
 

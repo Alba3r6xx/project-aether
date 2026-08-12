@@ -1,6 +1,5 @@
 'use client';
 
-import { createContext, useContext } from 'react';
 import { AuthProvider } from '../context/AuthContext';
 import ErrorBoundary from '../components/ErrorBoundary/ErrorBoundary';
 import NetworkBanner from '../components/NetworkBanner/NetworkBanner';

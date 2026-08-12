@@ -1,6 +1,6 @@
 import dynamic from 'next/dynamic';
 import Navbar from '../../components/Navbar/Navbar';
-import { fetchMetricSeriesServer } from '../../services/historyServiceServer';
+import { fetchMetricSeriesServer, fetchNodesServer } from '../../services/historyServiceServer';
 
 // Code splitting: ChartCard is SVG-heavy, load it lazily to reduce initial bundle
 const ChartCard = dynamic(() => import('../../components/ChartCard/ChartCard'), {
@@ -21,7 +21,7 @@ const CHARTS = [
   {
     key: 'humidity',
     title: 'Analytics - Humidity',
-    subtitle: 'Living Room - Floor 1',
+    subtitle: 'Relative humidity',
     unit: '%',
     color: 'var(--color-accent-blue)',
     summary: 'Humidity summary over the past 24 hours.',
@@ -29,16 +29,16 @@ const CHARTS = [
   {
     key: 'airQuality',
     title: 'Analytics - Air Quality',
-    subtitle: 'Living Room - Floor 1',
-    unit: ' AQI',
+    subtitle: 'CO\u2082 concentration',
+    unit: ' ppm',
     color: 'var(--color-accent-orange)',
     summary: 'Air quality summary over the past 24 hours.',
   },
   {
     key: 'luminosity',
     title: 'Analytics - Luminosity',
-    subtitle: 'Living Room - Floor 1',
-    unit: ' LUX',
+    subtitle: 'Raw LDR reading',
+    unit: ' ADC',
     color: 'var(--color-accent-yellow)',
     summary: 'Luminosity summary over the past 24 hours.',
   },
@@ -57,19 +57,32 @@ export default async function AnalyticsPage() {
   // AUDIT H17: wrap server fetches in try/catch so a Supabase failure
   // renders an error state instead of crashing the page.
   let seriesMap = {};
+  let nodes = [];
   let fetchError = false;
 
   try {
-    const seriesByMetric = await Promise.all(
-      CHARTS.map((chart) =>
-        fetchMetricSeriesServer(chart.key, { rangeHours: 24 }).then((s) => [chart.key, s])
-      )
-    );
+    const [seriesByMetric, nodeList] = await Promise.all([
+      Promise.all(
+        CHARTS.map((chart) =>
+          fetchMetricSeriesServer(chart.key, { rangeHours: 24 }).then((s) => [chart.key, s])
+        )
+      ),
+      fetchNodesServer(),
+    ]);
     seriesMap = Object.fromEntries(seriesByMetric);
+    nodes = nodeList;
   } catch (err) {
     console.error('Analytics page: failed to fetch series:', err);
     fetchError = true;
   }
+
+  // Label the page with the nodes actually reporting rather than a hardcoded
+  // node name, which was wrong for every deployment but the original demo.
+  const nodeLabel = nodes.length === 1
+    ? nodes[0].name
+    : nodes.length > 1
+      ? `${nodes.length} sensor nodes`
+      : 'No nodes reporting';
 
   if (fetchError) {
     return (
@@ -90,7 +103,7 @@ export default async function AnalyticsPage() {
     <div className="min-h-screen bg-navy-950">
       <Navbar tone="dark" />
       <main id="main-content" className="mx-auto max-w-7xl px-4 py-6 pb-20 sm:px-8 sm:py-8 lg:pb-8">
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">ESP32 - Sensor Node 01</p>
+        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">{nodeLabel}</p>
         <h1 className="mt-1 font-display text-2xl font-bold text-white sm:text-3xl">Analytics</h1>
         <p className="mt-1 text-sm text-slate-400">
           Deep dive into each metric&apos;s trend across the past 24 hours.

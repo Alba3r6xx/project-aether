@@ -11,6 +11,9 @@
 // the single trusted writer, per roadmap principle #3 ("one writer, not
 // many").
 //
+// Uses @ymjacky/mqtt5 (Deno-native MQTT v5 client, zero third-party deps)
+// instead of the npm `mqtt` package which pulls in `ws` (Node.js-only).
+//
 // ENV VARS (set in Supabase Dashboard > Edge Functions > ingest-mqtt > Secrets):
 //   MQTT_BROKER_URL   - e.g. mqtts://xxxxxxxx.s1.eu.hivemq.cloud:8883
 //   MQTT_USERNAME     - HiveMQ username
@@ -30,7 +33,7 @@
 // ---------------------------------------------------------------------------
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import mqtt from "https://esm.sh/mqtt@5.10.1";
+import { Mqtt, MqttClient } from "jsr:@ymjacky/mqtt5";
 
 // AUDIT H16/L10: structured logging helper.
 function log(level: string, msg: string, meta: Record<string, unknown> = {}) {
@@ -188,55 +191,22 @@ Deno.serve(async (_req: Request) => {
 
   let messageCount = 0;
   let errorCount = 0;
-  let connected = false;
 
   log("info", "Connecting to MQTT broker", { broker: mqttUrl, topic: mqttTopic });
 
-  // AUDIT H6: exponential backoff for reconnection to avoid connection
-  // storms during extended broker outages. mqtt.js doesn't support a
-  // function for reconnectPeriod, so we manually manage the reconnect
-  // delay by tracking attempts and overriding before each reconnect.
-  let reconnectAttempts = 0;
-  const maxReconnectPeriod = 30000;
-
-  const client = mqtt.connect(mqttUrl, {
+  // Build the MQTT client using the Deno-native @ymjacky/mqtt5 library.
+  // Supports mqtts:// (TLS) and MQTT v5.0, matching the firmware's protocolVersion: 5.
+  const client = new MqttClient({
+    url: new URL(mqttUrl),
+    clientId: `aether-ingest-${crypto.randomUUID().slice(0, 8)}`,
     username: mqttUsername || undefined,
     password: mqttPassword || undefined,
-    protocolVersion: 5,
-    reconnectPeriod: 3000,
-    connectTimeout: 15000,
-    clientId: `aether-ingest-${crypto.randomUUID().slice(0, 8)}`,
-  });
-
-  client.on("connect", () => {
-    connected = true;
-    reconnectAttempts = 0;
-    log("info", "Connected to broker, subscribing...");
-    client.subscribe(mqttTopic, { qos: 0 }, (err) => {
-      if (err) {
-        log("error", "Subscribe failed", { error: err.message });
-        errorCount++;
-      } else {
-        log("info", "Subscribed", { topic: mqttTopic });
-      }
-    });
-  });
-
-  client.on("reconnect", () => {
-    log("info", "Reconnecting...");
-  });
-
-  client.on("error", (err: Error) => {
-    log("error", "Connection error", { error: err.message });
-    errorCount++;
-  });
-
-  client.on("close", () => {
-    connected = false;
-    reconnectAttempts++;
-    const delay = Math.min(maxReconnectPeriod, 3000 * Math.pow(2, reconnectAttempts - 1));
-    log("warn", "Connection closed, reconnecting", { delayMs: delay, attempt: reconnectAttempts });
-    client.options.reconnectPeriod = delay;
+    protocolVersion: Mqtt.ProtocolVersion.MQTT_V5,
+    keepAlive: 30,
+    clean: true,
+    logger: (msg: string, ...args: unknown[]) => {
+      log("debug", `mqtt5: ${msg}`, { args: args.map(String).join(" ") });
+    },
   });
 
   // Node-to-org cache so we don't query the nodes table on every message
@@ -257,10 +227,11 @@ Deno.serve(async (_req: Request) => {
     return orgId;
   }
 
-  client.on("message", async (topic: string, payloadBuffer: Uint8Array) => {
+  // Handle incoming messages.
+  client.on("message", async (topic: string, payload: Uint8Array) => {
     try {
-      const payload: SensorPayload = JSON.parse(new TextDecoder().decode(payloadBuffer));
-      const row = normalizePayload(payload, topic);
+      const parsed: SensorPayload = JSON.parse(new TextDecoder().decode(payload));
+      const row = normalizePayload(parsed, topic);
 
       // Look up org_id for this node so RLS scopes the reading correctly
       // (AUDIT C2: readings without org_id are invisible to org-scoped queries
@@ -289,6 +260,7 @@ Deno.serve(async (_req: Request) => {
           log("info", "Ingest progress", { messageCount, errorCount });
         }
 
+        // Fire-and-forget alert evaluation (non-blocking).
         try {
           const alertRes = await fetch(
             `${supabaseUrl}/functions/v1/evaluate-alerts`,
@@ -321,6 +293,31 @@ Deno.serve(async (_req: Request) => {
     }
   });
 
+  // AUDIT H9: track connection status for the response.
+  client.on("closed", () => {
+    log("warn", "Connection closed, reconnecting...");
+  });
+
+  client.on("error", (err: Error) => {
+    log("error", "Connection error", { error: err.message });
+    errorCount++;
+  });
+
+  // Connect and subscribe.
+  try {
+    await client.connect();
+    log("info", "Connected to broker, subscribing...");
+
+    await client.subscribe(mqttTopic, Mqtt.QoS.AT_MOST_ONCE);
+    log("info", "Subscribed", { topic: mqttTopic });
+  } catch (err) {
+    log("error", "Connect/subscribe failed", { error: String(err) });
+    return new Response(
+      JSON.stringify({ status: "error", error: String(err), messageCount, errorCount }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   // Return an initial status response. The MQTT subscription continues
   // running in the background for the lifetime of the Edge Function
   // instance. Supabase keeps the function warm as long as it's active.
@@ -329,7 +326,7 @@ Deno.serve(async (_req: Request) => {
       status: "started",
       broker: mqttUrl,
       topic: mqttTopic,
-      connected,
+      connected: true,
       messageCount,
       errorCount,
     }),

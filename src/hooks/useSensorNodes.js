@@ -1,8 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchNodes, subscribeToReadings } from '../services/historyService';
 import { IS_SUPABASE_CONFIGURED } from '../services/supabaseClient';
+
+// A node is considered offline when its newest reading is older than this.
+// The firmware publishes every few seconds, so two minutes of silence means
+// the device has dropped off rather than merely being between messages.
+const STALE_AFTER_MS = 2 * 60 * 1000;
+
+// How often to re-evaluate staleness. A node going quiet produces no events,
+// so without a timer the card would keep claiming LIVE indefinitely.
+const STALENESS_TICK_MS = 15 * 1000;
 
 /**
  * Loads sensor nodes and keeps them fresh.
@@ -30,8 +39,15 @@ export function useSensorNodes() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState('idle');
+  // Bumped on an interval purely to re-run the staleness check below.
+  const [stalenessTick, setStalenessTick] = useState(0);
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
+
+  useEffect(() => {
+    const id = setInterval(() => setStalenessTick((t) => t + 1), STALENESS_TICK_MS);
+    return () => clearInterval(id);
+  }, []);
 
   const mode = IS_SUPABASE_CONFIGURED ? 'realtime' : 'offline';
   const isLive = mode === 'realtime';
@@ -106,5 +122,28 @@ export function useSensorNodes() {
     };
   }, [mode, mergeNodes]);
 
-  return { nodes, isLoading, isRefreshing, lastRefreshed, refresh, isLive, mode, connectionStatus };
+  // Derive each node's live/offline status from how recently it reported.
+  // Nothing upstream ever sets 'offline' — the fetchers and the Realtime
+  // payload both hardcode 'live' — so a node whose device had died would
+  // otherwise keep showing a LIVE badge forever.
+  const nodesWithStatus = useMemo(() => {
+    void stalenessTick;
+    const now = Date.now();
+    return nodes.map((node) => {
+      const last = node.lastUpdated ? new Date(node.lastUpdated).getTime() : NaN;
+      const isStale = Number.isNaN(last) || now - last > STALE_AFTER_MS;
+      return { ...node, status: isStale ? 'offline' : 'live' };
+    });
+  }, [nodes, stalenessTick]);
+
+  return {
+    nodes: nodesWithStatus,
+    isLoading,
+    isRefreshing,
+    lastRefreshed,
+    refresh,
+    isLive,
+    mode,
+    connectionStatus,
+  };
 }

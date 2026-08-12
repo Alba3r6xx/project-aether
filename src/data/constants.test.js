@@ -2,9 +2,9 @@
  * Tests for the Comfort Index algorithm (closes G11 verification).
  *
  * These tests verify that the dashboard's computeHeatIndex and
- * getComfortStatus match the firmware's PDF §5.0 algorithm:
- *   Stage 1: Steadman Heat Index (Adafruit DHT computeHeatIndex)
- *   Stage 3: Status classification using heat index + AQ thresholds
+ * getComfortLevel match the firmware:
+ *   Heat index: Steadman Heat Index (Adafruit DHT computeHeatIndex)
+ *   Comfort status: classification from CO2 ppm alone (airStatusFor)
  *
  * The Steadman heat index expected values were cross-checked against
  * the NWS heat index calculator:
@@ -55,79 +55,79 @@ describe('computeHeatIndex', () => {
   });
 });
 
-describe('getComfortLevel (§5.0 thresholds)', () => {
-  it('returns OPTIMAL when heat index 20-26°C and AQ < 30%', () => {
-    expect(getComfortLevel(22, 15).key).toBe('OPTIMAL');
-    expect(getComfortLevel(20, 29).key).toBe('OPTIMAL');
-    expect(getComfortLevel(26, 10).key).toBe('OPTIMAL');
+describe('getComfortLevel (CO2 ppm thresholds)', () => {
+  it('returns GOOD at or below 1000 ppm', () => {
+    expect(getComfortLevel(400).key).toBe('GOOD');
+    expect(getComfortLevel(800).key).toBe('GOOD');
+    expect(getComfortLevel(1000).key).toBe('GOOD');
   });
 
-  it('returns FAIR when heat index 26-29°C or AQ 30-60%', () => {
-    expect(getComfortLevel(27, 20).key).toBe('FAIR');
-    expect(getComfortLevel(22, 45).key).toBe('FAIR');
-    expect(getComfortLevel(28, 55).key).toBe('FAIR');
+  it('returns FAIR between 1001 and 2000 ppm', () => {
+    expect(getComfortLevel(1001).key).toBe('FAIR');
+    expect(getComfortLevel(1500).key).toBe('FAIR');
+    expect(getComfortLevel(2000).key).toBe('FAIR');
   });
 
-  it('returns FAIR for heat index 18-20 (between POOR and OPTIMAL)', () => {
-    expect(getComfortLevel(19, 10).key).toBe('FAIR');
+  it('returns POOR between 2001 and 5000 ppm', () => {
+    expect(getComfortLevel(2001).key).toBe('POOR');
+    expect(getComfortLevel(3500).key).toBe('POOR');
+    expect(getComfortLevel(5000).key).toBe('POOR');
   });
 
-  it('returns POOR when heat index > 29°C', () => {
-    expect(getComfortLevel(30, 10).key).toBe('POOR');
-    expect(getComfortLevel(35, 5).key).toBe('POOR');
-  });
-
-  it('returns POOR when heat index < 18°C', () => {
-    expect(getComfortLevel(15, 10).key).toBe('POOR');
-    expect(getComfortLevel(10, 5).key).toBe('POOR');
-  });
-
-  it('returns POOR when air quality > 60%', () => {
-    expect(getComfortLevel(22, 70).key).toBe('POOR');
-    expect(getComfortLevel(25, 100).key).toBe('POOR');
-  });
-
-  it('is worst-case: POOR overrides OPTIMAL/FAIR', () => {
-    // Heat index is OPTIMAL (22°C) but AQ is POOR (>60%)
-    expect(getComfortLevel(22, 70).key).toBe('POOR');
-    // Heat index is POOR (>29°C) but AQ is OPTIMAL (<30%)
-    expect(getComfortLevel(30, 10).key).toBe('POOR');
+  it('returns HAZARD above 5000 ppm', () => {
+    expect(getComfortLevel(5001).key).toBe('HAZARD');
+    expect(getComfortLevel(20000).key).toBe('HAZARD');
   });
 
   it('returns a COMFORT_LEVELS entry with display properties', () => {
-    const level = getComfortLevel(22, 15);
-    expect(level).toBe(COMFORT_LEVELS.OPTIMAL);
+    const level = getComfortLevel(400);
+    expect(level).toBe(COMFORT_LEVELS.GOOD);
     expect(level).toHaveProperty('label');
     expect(level).toHaveProperty('message');
     expect(level).toHaveProperty('color');
+  });
+
+  // The UI (StatusCard) keys its icons and styles off these exact values, so
+  // a rename here silently degrades every card to "No Data".
+  it('only ever returns keys the UI knows how to render', () => {
+    for (const ppm of [400, 1500, 3500, 20000]) {
+      expect(['GOOD', 'FAIR', 'POOR', 'HAZARD']).toContain(getComfortLevel(ppm).key);
+    }
   });
 });
 
 describe('evaluateComfort', () => {
   it('returns heatIndex, comfortStatus, and level', () => {
-    const result = evaluateComfort({ temperature: 25, humidity: 50, airQuality: 20 });
+    const result = evaluateComfort({ temperature: 25, humidity: 50, airQuality: 800 });
     expect(result).toHaveProperty('heatIndex');
     expect(result).toHaveProperty('comfortStatus');
     expect(result).toHaveProperty('level');
     expect(typeof result.heatIndex).toBe('number');
-    expect(['OPTIMAL', 'FAIR', 'POOR']).toContain(result.comfortStatus);
+    expect(['GOOD', 'FAIR', 'POOR', 'HAZARD']).toContain(result.comfortStatus);
   });
 
   it('rounds heatIndex to 1 decimal place', () => {
-    const result = evaluateComfort({ temperature: 30, humidity: 80, airQuality: 20 });
+    const result = evaluateComfort({ temperature: 30, humidity: 80, airQuality: 800 });
     const decimals = (result.heatIndex.toString().split('.')[1] || '').length;
     expect(decimals).toBeLessThanOrEqual(1);
   });
 
-  it('produces OPTIMAL for ideal conditions', () => {
-    // 24°C, 40% RH, AQ 10% → heat index ~24°C → OPTIMAL
-    const result = evaluateComfort({ temperature: 24, humidity: 40, airQuality: 10 });
-    expect(result.comfortStatus).toBe('OPTIMAL');
+  it('produces GOOD for fresh air', () => {
+    const result = evaluateComfort({ temperature: 24, humidity: 40, airQuality: 450 });
+    expect(result.comfortStatus).toBe('GOOD');
   });
 
-  it('produces POOR for extreme heat', () => {
-    // 35°C, 90% RH → heat index well above 29°C → POOR
-    const result = evaluateComfort({ temperature: 35, humidity: 90, airQuality: 10 });
-    expect(result.comfortStatus).toBe('POOR');
+  it('produces HAZARD when CO2 exceeds the exposure limit', () => {
+    const result = evaluateComfort({ temperature: 24, humidity: 40, airQuality: 6000 });
+    expect(result.comfortStatus).toBe('HAZARD');
+  });
+
+  // Comfort status is CO2-only: temperature must not influence it, matching
+  // the firmware's airStatusFor().
+  it('ignores temperature and humidity when classifying', () => {
+    const cool = evaluateComfort({ temperature: 10, humidity: 20, airQuality: 450 });
+    const hot = evaluateComfort({ temperature: 40, humidity: 95, airQuality: 450 });
+    expect(cool.comfortStatus).toBe('GOOD');
+    expect(hot.comfortStatus).toBe('GOOD');
   });
 });

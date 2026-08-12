@@ -80,9 +80,10 @@ export default function Dashboard({ initialAlerts = [], initialLatestRow = null,
 
     // Overall comfort: worst case across all nodes
     const comfortLevels = nodes.map((n) => n.comfort).filter(Boolean);
-    const overallComfort = comfortLevels.includes('POOR') ? 'POOR'
+    const overallComfort = comfortLevels.includes('HAZARD') ? 'HAZARD'
+      : comfortLevels.includes('POOR') ? 'POOR'
       : comfortLevels.includes('FAIR') ? 'FAIR'
-      : comfortLevels.includes('OPTIMAL') ? 'OPTIMAL'
+      : comfortLevels.includes('GOOD') ? 'GOOD'
       : null;
 
     return { activeNodes, totalNodes: nodes.length, avgTemp, avgHum, avgAq, overallComfort, alertCount: alerts.length };

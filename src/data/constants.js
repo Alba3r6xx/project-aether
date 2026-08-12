@@ -67,21 +67,25 @@ export const METRIC_CONFIG = {
     min: 0,
     max: 100,
   },
+  // The MQ-135 reports CO2 in ppm, not an AQI index. 5000 ppm is the OSHA
+  // exposure limit and the HAZARD threshold, so it makes a sensible gauge max.
   airQuality: {
     label: 'Air Quality',
-    unit: 'AQI',
+    unit: 'ppm',
     icon: 'Wind',
     color: 'var(--color-accent-orange)',
     min: 0,
-    max: 100,
+    max: 5000,
   },
+  // The firmware sends the LDR's raw ESP32 ADC reading (12-bit, 0-4095), not
+  // a calibrated LUX value, so the gauge is scaled to the ADC range.
   luminosity: {
     label: 'Luminosity',
-    unit: 'LUX',
+    unit: 'ADC',
     icon: 'Sun',
     color: 'var(--color-accent-yellow)',
     min: 0,
-    max: 3000,
+    max: 4095,
   },
 };
 

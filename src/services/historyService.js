@@ -173,18 +173,18 @@ export async function subscribeToReadings(onInsert, onStatusChange) {
       { event: 'INSERT', schema: 'public', table: 'sensor_readings', filter: `org_id=eq.${orgId}` },
       (payload) => {
         const row = payload.new;
+        // Only the reading itself — no name/room/battery/wifi. useSensorNodes
+        // merges this over the node fetched from the `nodes` table, so sending
+        // placeholder metadata here would overwrite the real name and room
+        // the moment the first live reading arrived.
         onInsert({
           id: row.node_id,
-          name: `ESP32 - ${row.node_id}`,
-          room: 'Unassigned',
           status: 'live',
           comfort: row.comfort_status,
           temperature: row.temperature,
           humidity: row.humidity,
           airQuality: row.air_quality,
           luminosity: row.luminosity,
-          battery: null,
-          wifi: null,
           lastUpdated: row.recorded_at,
         });
       }

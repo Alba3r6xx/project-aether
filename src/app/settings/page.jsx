@@ -83,8 +83,8 @@ export default function SettingsPage() {
     setClaimStatus({ type: '', message: '' });
     setIsClaiming(true);
     try {
-      const { data: session } = await supabase.auth.getSession();
-      const token = session?.access_token;
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
       if (!token) {
         setClaimStatus({ type: 'error', message: 'You must be signed in to claim a node.' });
         setIsClaiming(false);
