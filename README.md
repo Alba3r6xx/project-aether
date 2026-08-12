@@ -88,7 +88,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=
 MQTT_BROKER_URL=         # e.g. mqtts://broker.hivemq.com:8883
 MQTT_USERNAME=           # optional
 MQTT_PASSWORD=           # optional
-MQTT_TOPIC=aether/sensors
+MQTT_TOPIC=aether/+/telemetry
 SUPABASE_URL=            # same as NEXT_PUBLIC_SUPABASE_URL
 SUPABASE_SERVICE_ROLE_KEY=
 ```

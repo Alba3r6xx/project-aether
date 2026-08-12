@@ -135,7 +135,10 @@ client.on('message', async (topic, payloadBuffer) => {
 
     // Parse node_id from topic: aether/<node_id>/telemetry
     const segments = topic.split('/');
-    const nodeId = segments.length >= 3 ? segments[1] : 'node-01';
+    const topicNodeId = segments.length >= 3 ? segments[1] : null;
+    // Fall back to node_id from the payload if the topic doesn't carry one
+    const payloadNodeId = payload.node_id ?? payload.nodeId ?? payload.id;
+    const nodeId = topicNodeId ?? payloadNodeId ?? 'node-01';
 
     // Validate ranges
     const clamp = (val, min, max) => {

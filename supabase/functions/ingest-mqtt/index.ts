@@ -15,7 +15,9 @@
 //   MQTT_BROKER_URL   - e.g. mqtts://xxxxxxxx.s1.eu.hivemq.cloud:8883
 //   MQTT_USERNAME     - HiveMQ username
 //   MQTT_PASSWORD     - HiveMQ password (server-only, never exposed to browser)
-//   MQTT_TOPIC        - e.g. aether/sensors  (default: aether/sensors)
+//   MQTT_TOPIC        - e.g. aether/+/telemetry  (default: aether/+/telemetry)
+//                        Wildcard "+" matches any node_id, so aether/node-01/telemetry,
+//                        aether/node-02/telemetry, etc. are all received.
 //   SUPABASE_URL      - https://xxxx.supabase.co
 //   SUPABASE_SERVICE_ROLE_KEY - service_role key (server-only)
 //
@@ -86,6 +88,9 @@ function getComfortStatus(airQuality: number): string {
 // ---------------------------------------------------------------------------
 
 interface SensorPayload {
+  node_id?: string;
+  nodeId?: string;
+  id?: string;
   temp?: number;
   temperature?: number;
   humidity?: number;
@@ -126,7 +131,12 @@ function normalizePayload(payload: SensorPayload, topic: string) {
 
   // Parse node_id from topic: aether/<node_id>/telemetry or aether/sensors
   const segments = topic.split("/");
-  const nodeId = segments.length >= 3 ? segments[1] : segments[segments.length - 1] ?? "node-01";
+  const topicNodeId = segments.length >= 3 ? segments[1] : null;
+
+  // Fall back to node_id from the payload if the topic doesn't carry one
+  // (e.g. firmware publishes to a flat topic like "aether/sensors").
+  const payloadNodeId = payload.node_id ?? payload.nodeId ?? payload.id;
+  const nodeId = topicNodeId ?? payloadNodeId ?? "node-01";
 
   // Compute heat index (stored for analytics) and comfort status
   // (matches firmware's airStatusFor — CO2 ppm only, no heat index).
@@ -160,7 +170,7 @@ Deno.serve(async (_req: Request) => {
   const mqttUrl = Deno.env.get("MQTT_BROKER_URL");
   const mqttUsername = Deno.env.get("MQTT_USERNAME");
   const mqttPassword = Deno.env.get("MQTT_PASSWORD");
-  const mqttTopic = Deno.env.get("MQTT_TOPIC") ?? "aether/sensors";
+  const mqttTopic = Deno.env.get("MQTT_TOPIC") ?? "aether/+/telemetry";
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
