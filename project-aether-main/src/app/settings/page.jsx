@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { LogOut, Mail, Plus, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { LogOut, Mail, Plus, Loader2, AlertCircle, CheckCircle2, Trash2 } from 'lucide-react';
 import Navbar from '../../components/Navbar/Navbar';
 import Sidebar from '../../components/Sidebar/Sidebar';
 import Toggle from '../../components/common/Toggle';
@@ -27,6 +27,10 @@ export default function SettingsPage() {
   const [claimForm, setClaimForm] = useState({ nodeId: '', name: '', room: '' });
   const [claimStatus, setClaimStatus] = useState({ type: '', message: '' });
   const [isClaiming, setIsClaiming] = useState(false);
+
+  // Delete-node state
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [deletingNodeId, setDeletingNodeId] = useState(null);
 
   useEffect(() => {
     fetchNodes()
@@ -118,6 +122,46 @@ export default function SettingsPage() {
       setClaimStatus({ type: 'error', message: err.message || 'Network error.' });
     } finally {
       setIsClaiming(false);
+    }
+  }
+
+  async function handleDeleteNode(nodeId) {
+    setDeletingNodeId(nodeId);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (!token) {
+        setClaimStatus({ type: 'error', message: 'You must be signed in to delete a node.' });
+        return;
+      }
+
+      const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/delete-node`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ nodeId }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setClaimStatus({ type: 'error', message: data.error || 'Failed to delete node.' });
+      } else {
+        setClaimStatus({ type: 'success', message: 'Node deleted successfully.' });
+        setConfirmDeleteId(null);
+        // Refresh the node list.
+        const updated = await fetchNodes();
+        setNodes(updated);
+        // If the deleted node was selected, switch to the first remaining node.
+        if (selectedNodeId === nodeId) {
+          setSelectedNodeId(updated[0]?.id ?? '');
+        }
+      }
+    } catch (err) {
+      setClaimStatus({ type: 'error', message: err.message || 'Network error.' });
+    } finally {
+      setDeletingNodeId(null);
     }
   }
 
@@ -233,21 +277,65 @@ export default function SettingsPage() {
 
               <ul className="mt-3 divide-y divide-white/5">
                 {nodes.map((node) => (
-                  <li key={node.id} className="flex items-center justify-between py-3 text-sm">
-                    <div>
-                      <p className="font-medium text-slate-200">{node.name}</p>
-                      <p className="text-xs text-slate-500">{node.room}</p>
+                  <li key={node.id} className="py-3 text-sm">
+                    <div className="flex items-center justify-between">
+                      <div className="min-w-0">
+                        <p className="font-medium text-slate-200">{node.name}</p>
+                        <p className="text-xs text-slate-500">
+                          {node.room}
+                          {node.room && node.id ? ' · ' : ''}
+                          <span className="font-mono">{node.id}</span>
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span
+                          className={cn(
+                            'rounded-full px-2.5 py-1 text-xs font-medium',
+                            node.status === 'live'
+                              ? 'bg-emerald-400/10 text-emerald-300'
+                              : 'bg-rose-400/10 text-rose-300'
+                          )}
+                        >
+                          {node.status === 'live' ? 'Live' : 'Low'}
+                        </span>
+                        {isSupabaseConfigured && (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(node.id)}
+                            aria-label={`Delete node ${node.name}`}
+                            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-rose-400/10 hover:text-rose-300 focus-ring"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <span
-                      className={cn(
-                        'rounded-full px-2.5 py-1 text-xs font-medium',
-                        node.status === 'live'
-                          ? 'bg-emerald-400/10 text-emerald-300'
-                          : 'bg-rose-400/10 text-rose-300'
-                      )}
-                    >
-                      {node.status === 'live' ? 'Live' : 'Low'}
-                    </span>
+                    {confirmDeleteId === node.id && (
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-rose-400/5 px-3 py-2.5">
+                        <p className="text-xs text-rose-300">
+                          Delete this node and all its data? This cannot be undone.
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(null)}
+                            disabled={deletingNodeId === node.id}
+                            className="flex min-h-[36px] items-center rounded-lg bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-white/10 disabled:opacity-50 focus-ring"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteNode(node.id)}
+                            disabled={deletingNodeId === node.id}
+                            className="flex min-h-[36px] items-center gap-1.5 rounded-lg bg-rose-400/15 px-3 py-1.5 text-xs font-semibold text-rose-300 transition-colors hover:bg-rose-400/25 disabled:opacity-50 focus-ring"
+                          >
+                            {deletingNodeId === node.id && <Loader2 size={12} className="animate-spin" />}
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </li>
                 ))}
                 {nodes.length === 0 && (

@@ -14,7 +14,6 @@
     "analyze": "ANALYZE=true next build"
   },
   "dependencies": {
-    "@next/swc-win32-x64-msvc": "^16.2.12",
     "@supabase/ssr": "0.12.3",
     "@supabase/supabase-js": "^2.111.0",
     "framer-motion": "^12.42.2",
