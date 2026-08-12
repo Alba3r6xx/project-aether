@@ -199,41 +199,26 @@ export async function fetchNodesServer() {
     return [];
   }
 
-  // Use the RPC function for a single-query latest reading per node
-  // (AUDIT C9: was N+1 — now uses DISTINCT ON via RPC).
-  const { data: rpcData, error: rpcError } = await supabase.rpc(
-    'get_latest_readings_per_node',
-    {}
-  );
-
-  if (!rpcError && rpcData && rpcData.length > 0) {
-    return rpcData.map((row) => ({
-      id: row.node_id,
-      name: row.node_name,
-      room: row.room || 'Unassigned',
-      floor: row.floor,
-      location: row.location,
-      firmwareVersion: row.firmware_version,
-      status: 'live',
-      comfort: row.comfort_status,
-      temperature: row.temperature,
-      humidity: row.humidity,
-      airQuality: row.air_quality,
-      luminosity: row.luminosity,
-      battery: null,
-      wifi: null,
-      lastUpdated: row.recorded_at,
-    }));
-  }
-
-  // Fallback: try the nodes table without readings.
+  // Always fetch from the nodes table first — claimed nodes with no readings
+  // must still appear (otherwise they're invisible in the UI).
   const { data: nodesData, error: nodesError } = await supabase
     .from('nodes')
     .select('id, name, room, floor, location, firmware_version, claimed_at')
     .order('claimed_at', { ascending: true });
 
-  if (!nodesError && nodesData && nodesData.length > 0) {
-    return nodesData.map((node) => ({
+  if (nodesError) {
+    logError('Server: failed to load nodes:', nodesError);
+    return [];
+  }
+
+  if (!nodesData || nodesData.length === 0) {
+    return [];
+  }
+
+  // Build the base node list from the nodes table.
+  const byId = new Map();
+  for (const node of nodesData) {
+    byId.set(node.id, {
       id: node.id,
       name: node.name,
       room: node.room || 'Unassigned',
@@ -249,38 +234,27 @@ export async function fetchNodesServer() {
       battery: null,
       wifi: null,
       lastUpdated: node.claimed_at,
-    }));
-  }
-
-  // Final fallback: derive from sensor_readings.
-  const { data, error } = await supabase
-    .from('sensor_readings')
-    .select('node_id, recorded_at, temperature, humidity, heat_index, air_quality, luminosity, comfort_index, comfort_status')
-    .order('recorded_at', { ascending: false })
-    .limit(500);
-
-  if (error) {
-    logError('Server: failed to load nodes:', error);
-    return [];
-  }
-
-  const byId = new Map();
-  for (const row of data) {
-    if (byId.has(row.node_id)) continue;
-    byId.set(row.node_id, {
-      id: row.node_id,
-      name: `ESP32 - ${row.node_id}`,
-      room: 'Unassigned',
-      status: 'live',
-      comfort: row.comfort_status,
-      temperature: row.temperature,
-      humidity: row.humidity,
-      airQuality: row.air_quality,
-      luminosity: row.luminosity,
-      battery: null,
-      wifi: null,
-      lastUpdated: row.recorded_at,
     });
+  }
+
+  // Enrich with latest readings via the RPC (single query, not N+1).
+  const { data: rpcData, error: rpcError } = await supabase.rpc(
+    'get_latest_readings_per_node',
+    {}
+  );
+
+  if (!rpcError && rpcData) {
+    for (const row of rpcData) {
+      const node = byId.get(row.node_id);
+      if (node) {
+        node.comfort = row.comfort_status;
+        node.temperature = row.temperature;
+        node.humidity = row.humidity;
+        node.airQuality = row.air_quality;
+        node.luminosity = row.luminosity;
+        node.lastUpdated = row.recorded_at;
+      }
+    }
   }
 
   return Array.from(byId.values());
