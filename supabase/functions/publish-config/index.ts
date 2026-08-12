@@ -193,8 +193,8 @@ Deno.serve(async (req: Request) => {
   if (!nodeId || typeof nodeId !== "string") {
     return errorResponse(400, "nodeId is required", requestId);
   }
-  if (nodeId.length > 100 || !/^[a-zA-Z0-9_-]+$/.test(nodeId)) {
-    return errorResponse(400, "nodeId must be 1-100 chars, alphanumeric/hyphen/underscore only", requestId);
+  if (nodeId.length > 100 || !/^[a-zA-Z0-9 _-]+$/.test(nodeId)) {
+    return errorResponse(400, "nodeId must be 1-100 chars, alphanumeric/space/hyphen/underscore only", requestId);
   }
 
   // Optional WiFi credentials are pass-through only (see the payload note
