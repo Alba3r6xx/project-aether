@@ -33,7 +33,7 @@
 // ---------------------------------------------------------------------------
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { Mqtt, MqttClient } from "jsr:@ymjacky/mqtt5";
+import mqtt from "npm:mqtt@4.3.7";
 
 // AUDIT H16/L10: structured logging helper.
 function log(level: string, msg: string, meta: Record<string, unknown> = {}) {
@@ -194,19 +194,15 @@ Deno.serve(async (_req: Request) => {
 
   log("info", "Connecting to MQTT broker", { broker: mqttUrl, topic: mqttTopic });
 
-  // Build the MQTT client using the Deno-native @ymjacky/mqtt5 library.
-  // Supports mqtts:// (TLS) and MQTT v5.0, matching the firmware's protocolVersion: 5.
-  const client = new MqttClient({
-    url: new URL(mqttUrl),
+  // Use the npm mqtt@4 package — reliable in Deno with TLS support.
+  const client = mqtt.connect(mqttUrl, {
     clientId: `aether-ingest-${crypto.randomUUID().slice(0, 8)}`,
     username: mqttUsername || undefined,
     password: mqttPassword || undefined,
-    protocolVersion: Mqtt.ProtocolVersion.MQTT_V5,
+    protocolVersion: 5,
     keepAlive: 30,
     clean: true,
-    logger: (msg: string, ...args: unknown[]) => {
-      log("debug", `mqtt5: ${msg}`, { args: args.map(String).join(" ") });
-    },
+    reconnectPeriod: 0, // no auto-reconnect — we handle lifecycle ourselves
   });
 
   // Node-to-org cache so we don't query the nodes table on every message
@@ -294,8 +290,8 @@ Deno.serve(async (_req: Request) => {
   });
 
   // AUDIT H9: track connection status for the response.
-  client.on("closed", () => {
-    log("warn", "Connection closed, reconnecting...");
+  client.on("close", () => {
+    log("warn", "Connection closed");
   });
 
   client.on("error", (err: Error) => {
@@ -303,30 +299,54 @@ Deno.serve(async (_req: Request) => {
     errorCount++;
   });
 
-  // Connect and subscribe.
-  try {
-    await client.connect();
-    log("info", "Connected to broker, subscribing...");
+  // Wait for the 'connect' event, then subscribe.
+  const connected = await new Promise<boolean>((resolve) => {
+    client.on("connect", () => {
+      log("info", "Connected to broker, subscribing...");
+      client.subscribe(mqttTopic, { qos: 0 }, (err) => {
+        if (err) {
+          log("error", "Subscribe failed", { error: String(err) });
+          resolve(false);
+        } else {
+          log("info", "Subscribed", { topic: mqttTopic });
+          resolve(true);
+        }
+      });
+    });
+    client.on("error", () => resolve(false));
+    // Timeout after 15 seconds
+    setTimeout(() => resolve(false), 15_000);
+  });
 
-    await client.subscribe(mqttTopic, Mqtt.QoS.AT_MOST_ONCE);
-    log("info", "Subscribed", { topic: mqttTopic });
-  } catch (err) {
-    log("error", "Connect/subscribe failed", { error: String(err) });
+  if (!connected) {
+    client.end();
     return new Response(
-      JSON.stringify({ status: "error", error: String(err), messageCount, errorCount }),
+      JSON.stringify({ status: "error", error: "Failed to connect/subscribe", messageCount, errorCount }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 
-  // Return an initial status response. The MQTT subscription continues
-  // running in the background for the lifetime of the Edge Function
-  // instance. Supabase keeps the function warm as long as it's active.
+  // Keep the function alive for ~120 seconds so the MQTT subscription can
+  // receive and process messages. Supabase Edge Functions have a wall-clock
+  // limit, so we can't stay alive forever — the pg_cron job re-invokes this
+  // function every 2 minutes to maintain near-continuous coverage.
+  const ALIVE_MS = 120_000;
+  log("info", "Listening for messages", { durationMs: ALIVE_MS });
+  await new Promise((resolve) => setTimeout(resolve, ALIVE_MS));
+
+  // Disconnect cleanly before the function is killed.
+  try {
+    client.end();
+  } catch {
+    // ignore — the function is about to exit anyway
+  }
+
   return new Response(
     JSON.stringify({
-      status: "started",
+      status: "completed",
       broker: mqttUrl,
       topic: mqttTopic,
-      connected: true,
+      connected: false,
       messageCount,
       errorCount,
     }),
